@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useRef, use } from 'react' // Добавили use
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { User } from '@supabase/supabase-js'
 
@@ -14,17 +14,16 @@ type Message = {
   receiver_id: string
 }
 
-export default function PrivateChatPage({ params }: { params: Promise<{ id: string }> }) {
-  // Распаковываем params с помощью use()
-  const resolvedParams = use(params)
-  const otherId = resolvedParams.id
-  
+export default function PrivateChatPage() {
+  const router = useRouter()
+  const params = useParams()
+  const otherId = params.id as string
+
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [otherUser, setOtherUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -117,7 +116,8 @@ export default function PrivateChatPage({ params }: { params: Promise<{ id: stri
             <Link href="/chat" className="text-sm font-medium opacity-50 hover:opacity-100 transition-opacity mr-2">
               &larr; Назад
             </Link>
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">{otherUser?.avatar_url ? (
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
+              {otherUser?.avatar_url ? (
                 <img src={otherUser.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500">
