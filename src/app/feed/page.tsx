@@ -14,6 +14,7 @@ type Event = {
   created_at: string
   image_urls?: string[]
   profiles: {
+    id: string
     display_name: string
     username: string
     avatar_url: string | null
@@ -44,7 +45,7 @@ export default function FeedPage() {
         .from('events')
         .select(`
           id, title, description, location, event_date, created_at, image_urls,
-          profiles (display_name, username, avatar_url),
+          profiles (id, display_name, username, avatar_url),
           reactions (user_id)
         `)
         .eq('status', 'approved')
@@ -67,7 +68,7 @@ export default function FeedPage() {
       .from('events')
       .select(`
         id, title, description, location, event_date, created_at, image_urls,
-        profiles (display_name, username, avatar_url),
+        profiles (id, display_name, username, avatar_url),
         reactions (user_id)
       `)
       .eq('status', 'approved')
@@ -83,10 +84,13 @@ export default function FeedPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         
         <div className="flex flex-col md:flex-row justify-between items-center p-6 rounded-2xl shadow-sm border gap-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-text)' }}>Лента новостей</h1>
-            <p className="text-sm opacity-70">Студенческие мероприятия и анонсы</p>
-          </div>
+          <Link href="/" className="flex flex-col">
+            <span className="text-xl font-black tracking-tighter flex items-center gap-1 mb-1">
+              <span style={{ color: 'var(--primary-color)' }}>WW</span>
+              <span style={{ color: 'var(--text-color)' }}>-Max</span>
+            </span>
+            <p className="text-sm opacity-70">Лента новостей</p>
+          </Link>
           
           <div className="flex flex-wrap items-center gap-3">
             {(userRole === 'moderator' || userRole === 'admin') && (
@@ -95,9 +99,13 @@ export default function FeedPage() {
               </Link>
             )}
             
+            <Link href="/chat" className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+              Сообщения
+            </Link>
+
             <Link href="/profile" className="px-4 py-2 text-sm font-medium rounded-lg transition-colors" style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)' }}>
               Профиль
-            </Link>
+              </Link>
             
             <Link href="/feed/create" className="px-5 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors" style={{ backgroundColor: 'var(--primary-color)' }}>
               Создать
@@ -130,9 +138,20 @@ export default function FeedPage() {
                       </div>
                       <div>
                         <h2 className="text-xl font-bold leading-tight">{event.title}</h2>
-                        <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--primary-color)' }}>
-                          {event.profiles?.display_name || event.profiles?.username || 'Неизвестный'}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-sm font-medium" style={{ color: 'var(--primary-color)' }}>
+                            {event.profiles?.display_name || event.profiles?.username || 'Неизвестный'}
+                          </p>
+                          {event.profiles?.id !== userId && (
+                            <button 
+                              onClick={() => router.push(`/chat/${event.profiles?.id}`)}
+                              className="text-xs font-medium px-2 py-0.5 rounded border hover:opacity-80 transition-colors"
+                              style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}
+                            >
+                              Написать
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <span className="text-xs opacity-50 whitespace-nowrap ml-4">
@@ -158,8 +177,7 @@ export default function FeedPage() {
                     </div>
                   )}
                   
-                  <div className="flex flex-wrap gap-4 text-sm p-3 rounded-lg bg-black/5 mb-4">
-                    {event.location && <span>Место: {event.location}</span>}
+                  <div className="flex flex-wrap gap-4 text-sm p-3 rounded-lg bg-black/5 mb-4">{event.location && <span>Место: {event.location}</span>}
                     {event.event_date && (
                       <span>
                         Время: {new Date(event.event_date).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
@@ -178,7 +196,7 @@ export default function FeedPage() {
                     </button>
                   </div>
                 </div>
-                )
+              )
             })
           )}
         </div>
