@@ -1,0 +1,240 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { User } from '@supabase/supabase-js'
+
+export default function ProfilePage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  
+  const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [role, setRole] = useState('user')
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const router = useRouter()
+
+  useEffect(() => {
+    const getProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+      
+      setUser(session.user)
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, display_name, bio, role, avatar_url')
+        .eq('id', session.user.id)
+        .single()
+
+      if (data) {
+        setUsername(data.username || '')
+        setDisplayName(data.display_name || '')
+        setBio(data.bio || '')
+        setRole(data.role || 'user')
+        setAvatarUrl(data.avatar_url || '')
+      }
+      
+      setLoading(false)
+    }
+    getProfile()
+  }, [router])
+
+  const uploadAvatar = async () => {
+    if (!avatarFile || !user) return
+    setUploading(true)
+
+    const fileExt = avatarFile.name.split('.').pop()
+    const fileName = `${user.id}-${Math.random()}.${fileExt}`
+    const filePath = `avatars/${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('events')
+      .upload(filePath, avatarFile)
+
+    if (uploadError) {
+      setMessage('Ошибка загрузки фото: ' + uploadError.message)
+      setUploading(false)
+      return
+    }
+
+    const { data } = supabase.storage.from('events').getPublicUrl(filePath)
+    
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: data.publicUrl })
+      .eq('id', user.id)
+
+    if (updateError) {
+      setMessage('Ошибка обновления профиля: ' + updateError.message)
+    } else {
+      setAvatarUrl(data.publicUrl)
+      setMessage('Фото профиля обновлено!')
+    }
+    setUploading(false)
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    
+    setSaving(true)
+    setMessage('')
+
+    if (avatarFile) {
+      await uploadAvatar()
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        username,
+        display_name: displayName,
+        bio,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id)
+
+    if (error) {
+      setMessage('Ошибка при сохранении: ' + error.message)
+    } else {
+      setMessage('Профиль успешно обновлен!')
+    }
+    setAvatarFile(null)
+    setSaving(false)
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
+  if (loading) return <div className="p-8 text-center font-medium text-[var(--text-color)]">Загрузка...</div>
+
+  return (
+    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
+      <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+        
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-text)' }}>Мой профиль</h1>
+            <p className="text-sm opacity-70 mt-1">Управляйте своей личной страницей</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link 
+              href="/feed"
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+              style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)' }}
+            >
+              В ленту
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              Выйти
+            </button>
+          </div>
+        </div>
+
+        {message && (
+          <div className={`mb-6 p-3 text-sm rounded-lg font-medium ${message.includes('Ошибка') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+            {message}
+          </div>
+        )}
+        
+        <form onSubmit={handleSave} className="space-y-5">
+          
+          <div className="flex items-center gap-5 mb-6">
+            <div className="w-20 h-20 rounded-full border overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center" style={{ borderColor: 'var(--card-border)' }}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Аватар" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs opacity-50">Нет фото</span>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Фото профиля</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setAvatarFile(e.target.files ? e.target.files[0] : null)}
+                className="block w-full text-sm file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium hover:file:opacity-80 transition-colors"
+                style={{ color: 'var(--text-color)' }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium mb-1">Username (ник)</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="block w-full rounded-lg border px-4 py-2.5 shadow-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Отображаемое имя</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="block w-full rounded-lg border px-4 py-2.5 shadow-sm focus:outline-none focus:ring-1"
+                style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">О себе</label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              rows={4}
+              className="block w-full rounded-lg border px-4 py-3 shadow-sm focus:outline-none focus:ring-1 resize-none"
+              style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
+            />
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={saving || uploading}
+              className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-white disabled:opacity-50 transition-colors"
+              style={{ backgroundColor: 'var(--primary-color)' }}
+            >
+                {saving || uploading ? 'Сохранение...' : 'Сохранить изменения'}
+            </button>
+          </div>
+        </form>
+
+        <div className="mt-8 pt-6 border-t flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-sm" style={{ borderColor: 'var(--card-border)' }}>
+          <div className="flex items-center gap-2">
+            <span className="font-medium opacity-70">Статус:</span>
+            <span className="px-2.5 py-1 text-xs font-bold rounded-md uppercase tracking-wider" 
+                  style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)' }}>
+              {role === 'moderator' ? 'Модератор' : role === 'admin' ? 'Администратор' : 'Студент'}
+            </span>
+          </div>
+          <span className="text-xs opacity-50">Вы вошли как: {user?.email}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
