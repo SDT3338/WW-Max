@@ -87,6 +87,15 @@ export default function CreateEventPage() {
       setMessage('Ошибка: ' + error.message)
       setLoading(false)
     } else {
+      // Отправляем уведомление всем модераторам и админам
+      const { data: mods } = await supabase.from('profiles').select('id').in('role', ['moderator', 'admin'])
+      if (mods && mods.length > 0) {
+        const notifications = mods.map(m => ({
+          user_id: m.id,
+          content: `Новая новость "${title}" ожидает проверки.`
+        }))
+        await supabase.from('notifications').insert(notifications)
+      }
       router.push('/feed')
     }
   }
@@ -114,7 +123,6 @@ export default function CreateEventPage() {
             {message}
           </div>
         )}
-
         <form onSubmit={handleCreate} className="space-y-5">
           <div>
             <div className="flex justify-between mb-1">

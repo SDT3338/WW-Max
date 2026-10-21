@@ -19,6 +19,8 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  
+  const [subscriptions, setSubscriptions] = useState<any[]>([])
 
   const router = useRouter()
 
@@ -44,6 +46,27 @@ export default function ProfilePage() {
         setBio(data.bio || '')
         setRole(data.role || 'user')
         setAvatarUrl(data.avatar_url || '')
+      }
+
+      const { data: subs } = await supabase
+        .from('subscriptions')
+        .select('following_id')
+        .eq('follower_id', session.user.id)
+      
+      if (subs && subs.length > 0) {
+        const followingIds = subs.map(s => s.following_id)
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', followingIds)
+        
+        if (profilesData) {
+          const formattedSubs = profilesData.map(p => ({
+            following_id: p.id,
+            profiles: p
+          }))
+          setSubscriptions(formattedSubs)
+        }
       }
       
       setLoading(false)
@@ -115,6 +138,19 @@ export default function ProfilePage() {
     setSaving(false)
   }
 
+  const handleUnsubscribe = async (followingId: string) => {
+    if (!user) return
+    
+    const { error } = await supabase
+      .from('subscriptions')
+      .delete()
+      .match({ follower_id: user.id, following_id: followingId })
+
+    if (!error) {
+      setSubscriptions(subscriptions.filter(s => s.following_id !== followingId))
+    }
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
@@ -123,7 +159,7 @@ export default function ProfilePage() {
   if (loading) return <div className="p-8 text-center font-medium text-[var(--text-color)]">Загрузка...</div>
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
+    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center gap-6">
       <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -131,6 +167,7 @@ export default function ProfilePage() {
             <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-text)' }}>Мой профиль</h1>
             <p className="text-sm opacity-70 mt-1">Управляйте своей личной страницей</p>
           </div>
+          
           <div className="flex items-center gap-3">
             <Link 
               href="/feed"
@@ -219,7 +256,7 @@ export default function ProfilePage() {
               className="w-full flex justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-white disabled:opacity-50 transition-colors"
               style={{ backgroundColor: 'var(--primary-color)' }}
             >
-                {saving || uploading ? 'Сохранение...' : 'Сохранить изменения'}
+              {saving || uploading ? 'Сохранение...' : 'Сохранить изменения'}
             </button>
           </div>
         </form>
@@ -234,6 +271,42 @@ export default function ProfilePage() {
           </div>
           <span className="text-xs opacity-50">Вы вошли как: {user?.email}</span>
         </div>
+      </div>
+
+      <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+        <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>Мои подписки</h2>
+        
+        {subscriptions.length === 0 ? (
+          <p className="text-sm opacity-50">Вы пока ни на кого не подписаны.</p>
+        ) : (
+          <div className="space-y-3">
+            {subscriptions.map((sub) => (
+              <div key={sub.following_id} className="flex items-center justify-between p-3 rounded-xl border bg-black/5" style={{ borderColor: 'var(--card-border)' }}>
+                <Link href={`/u/profile?id=${sub.profiles.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
+                    {sub.profiles.avatar_url ? (
+                      <img src={sub.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500">
+                        {sub.profiles.username?.charAt(0).toUpperCase() || '?'}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">{sub.profiles.display_name || sub.profiles.username}</p>
+                    <p className="text-xs opacity-50">@{sub.profiles.username}</p>
+                  </div>
+                </Link>
+                <button
+                  onClick={() => handleUnsubscribe(sub.following_id)}
+                  className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  Отписаться
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

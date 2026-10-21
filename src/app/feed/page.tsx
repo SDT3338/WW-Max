@@ -13,6 +13,8 @@ type Event = {
   event_date: string
   created_at: string
   image_urls?: string[]
+  status: string
+  rejection_reason?: string | null
   profiles: {
     id: string
     display_name: string
@@ -44,11 +46,11 @@ export default function FeedPage() {
       const { data } = await supabase
         .from('events')
         .select(`
-          id, title, description, location, event_date, created_at, image_urls,
+          id, title, description, location, event_date, created_at, image_urls, status, rejection_reason,
           profiles (id, display_name, username, avatar_url),
           reactions (user_id)
         `)
-        .eq('status', 'approved')
+        .or(`status.eq.approved,author_id.eq.${session.user.id}`)
         .order('created_at', { ascending: false })
 
       if (data) setEvents(data as any)
@@ -67,11 +69,11 @@ export default function FeedPage() {
     const { data } = await supabase
       .from('events')
       .select(`
-        id, title, description, location, event_date, created_at, image_urls,
+        id, title, description, location, event_date, created_at, image_urls, status, rejection_reason,
         profiles (id, display_name, username, avatar_url),
         reactions (user_id)
       `)
-      .eq('status', 'approved')
+      .or(`status.eq.approved,author_id.eq.${userId}`)
       .order('created_at', { ascending: false })
       
     if (data) setEvents(data as any)
@@ -93,19 +95,24 @@ export default function FeedPage() {
           </Link>
           
           <div className="flex flex-wrap items-center gap-3">
+            {userRole === 'admin' && (
+              <Link href="/admin" className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+                Админка
+              </Link>
+            )}
+
             {(userRole === 'moderator' || userRole === 'admin') && (
               <Link href="/moderator" className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
                 Модерация
               </Link>
             )}
-            
             <Link href="/chat" className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
               Сообщения
             </Link>
 
             <Link href="/profile" className="px-4 py-2 text-sm font-medium rounded-lg transition-colors" style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)' }}>
               Профиль
-              </Link>
+            </Link>
             
             <Link href="/feed/create" className="px-5 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors" style={{ backgroundColor: 'var(--primary-color)' }}>
               Создать
@@ -122,10 +129,21 @@ export default function FeedPage() {
             events.map((event) => {
               const hasReacted = event.reactions?.some(r => r.user_id === userId)
               const reactionCount = event.reactions?.length || 0
+              const isMyEvent = event.profiles?.id === userId
 
               return (
-                <div key={event.id} className="p-6 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
-                  <div className="flex justify-between items-start mb-4">
+                <div key={event.id} className="p-6 rounded-2xl shadow-sm border relative overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+                  
+                  {isMyEvent && event.status !== 'approved' && (
+                    <div className={`absolute top-0 left-0 w-full px-6 py-1.5 text-xs font-bold text-center ${
+                      event.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                      event.status === 'rejected' ? 'bg-red-100 text-red-800' : ''
+                    }`}>
+                      {event.status === 'pending' ? 'На модерации' : `Отклонено: ${event.rejection_reason || 'Без причины'}`}
+                    </div>
+                  )}
+
+                  <div className={`flex justify-between items-start mb-4 ${isMyEvent && event.status !== 'approved' ? 'mt-6' : ''}`}>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
                         {event.profiles?.avatar_url ? (
@@ -139,10 +157,10 @@ export default function FeedPage() {
                       <div>
                         <h2 className="text-xl font-bold leading-tight">{event.title}</h2>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-sm font-medium" style={{ color: 'var(--primary-color)' }}>
+                          <Link href={`/u/profile?id=${event.profiles?.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary-color)' }}>
                             {event.profiles?.display_name || event.profiles?.username || 'Неизвестный'}
-                          </p>
-                          {event.profiles?.id !== userId && (
+                          </Link>
+                          {!isMyEvent && (
                             <button 
                               onClick={() => router.push(`/chat/${event.profiles?.id}`)}
                               className="text-xs font-medium px-2 py-0.5 rounded border hover:opacity-80 transition-colors"
@@ -152,7 +170,7 @@ export default function FeedPage() {
                             </button>
                           )}
                         </div>
-                      </div>
+                        </div>
                     </div>
                     <span className="text-xs opacity-50 whitespace-nowrap ml-4">
                       {new Date(event.created_at).toLocaleDateString('ru-RU')}
@@ -177,7 +195,8 @@ export default function FeedPage() {
                     </div>
                   )}
                   
-                  <div className="flex flex-wrap gap-4 text-sm p-3 rounded-lg bg-black/5 mb-4">{event.location && <span>Место: {event.location}</span>}
+                  <div className="flex flex-wrap gap-4 text-sm p-3 rounded-lg bg-black/5 mb-4">
+                    {event.location && <span>Место: {event.location}</span>}
                     {event.event_date && (
                       <span>
                         Время: {new Date(event.event_date).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
@@ -185,16 +204,18 @@ export default function FeedPage() {
                     )}
                   </div>
 
-                  <div className="flex justify-end pt-2">
-                    <button 
-                      onClick={() => toggleReaction(event.id, !!hasReacted)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${hasReacted ? 'bg-red-50 text-red-600 border-red-200' : 'hover:bg-black/5'}`}
-                      style={{ borderColor: hasReacted ? undefined : 'var(--card-border)' }}
-                    >
-                      <span>{hasReacted ? '❤️' : '🤍'}</span>
-                      <span>{reactionCount > 0 ? reactionCount : 'Нравится'}</span>
-                    </button>
-                  </div>
+                  {event.status === 'approved' && (
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        onClick={() => toggleReaction(event.id, !!hasReacted)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${hasReacted ? 'bg-red-50 text-red-600 border-red-200' : 'hover:bg-black/5'}`}
+                        style={{ borderColor: hasReacted ? undefined : 'var(--card-border)' }}
+                      >
+                        <span>{hasReacted ? '❤️' : '🤍'}</span>
+                        <span>{reactionCount > 0 ? reactionCount : 'Нравится'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })
