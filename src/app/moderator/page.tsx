@@ -14,6 +14,7 @@ type Event = {
   status: string
   image_urls?: string[]
   moderator_id?: string | null
+  is_important: boolean
   profiles: {
     display_name: string
     username: string
@@ -30,7 +31,6 @@ export default function ModeratorPage() {
   const [error, setError] = useState('')
   const [currentUserId, setCurrentUserId] = useState<string>('')
   
-  // Состояния для модальных окон
   const [actionModal, setActionModal] = useState<{ id: string, type: 'reject' | 'revision' } | null>(null)
   const [reasonText, setReasonText] = useState('')
   
@@ -67,7 +67,7 @@ export default function ModeratorPage() {
     const { data, error } = await supabase
       .from('events')
       .select(`
-        id, title, description, location, event_date, status, image_urls, moderator_id,
+        id, title, description, location, event_date, status, image_urls, moderator_id, is_important,
         profiles!events_author_id_fkey (display_name, username),
         moderator:profiles!events_moderator_id_fkey (display_name, username)
       `)
@@ -99,10 +99,22 @@ export default function ModeratorPage() {
     if (!error) fetchEvents()
   }
 
+  const toggleImportant = (id: string, currentValue: boolean) => {
+    setEvents(events.map(ev => 
+      ev.id === id ? { ...ev, is_important: !currentValue } : ev
+    ))
+  }
+
   const handleApprove = async (id: string) => {
+    const eventToApprove = events.find(e => e.id === id)
+
     const { error } = await supabase
       .from('events')
-      .update({ status: 'approved', rejection_reason: null, revision_comment: null })
+      .update({ 
+        status: 'approved', 
+        rejection_reason: null,
+        is_important: eventToApprove?.is_important || false
+      })
       .eq('id', id)
 
     if (error) {
@@ -132,7 +144,7 @@ export default function ModeratorPage() {
       : { status: 'revision', revision_comment: reasonText, rejection_reason: null }
 
     const { error } = await supabase
-      .from('events')
+    .from('events')
       .update(updateData)
       .eq('id', actionModal.id)
 
@@ -208,7 +220,7 @@ export default function ModeratorPage() {
                     <p className="text-sm font-medium mt-1" style={{ color: 'var(--primary-color)' }}>
                       Автор: {event.profiles?.display_name || event.profiles?.username || 'Неизвестный'}
                     </p>
-                  </div>
+                    </div>
                   
                   {event.description && <p className="mb-4 whitespace-pre-wrap opacity-90">{event.description}</p>}
 
@@ -232,19 +244,34 @@ export default function ModeratorPage() {
                       Занято другим модератором
                     </button>
                   ) : isLockedByMe ? (
-                    <div className="flex flex-wrap gap-3">
-                      <button onClick={() => handleApprove(event.id)} className="px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                        Одобрить
-                      </button>
-                      <button onClick={() => setActionModal({ id: event.id, type: 'revision' })} className="px-5 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 transition-colors shadow-sm">
-                        На доработку
-                      </button>
-                      <button onClick={() => setActionModal({ id: event.id, type: 'reject' })} className="px-5 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm">
-                        Отклонить
-                      </button>
-                      <button onClick={() => releaseTask(event.id)} className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
-                        Вернуть в очередь
-                      </button>
+                    <div>
+                      <div className="flex items-center gap-2 mb-4">
+                        <input
+                          type="checkbox"
+                          id={`important-${event.id}`}
+                          checked={event.is_important || false}
+                          onChange={() => toggleImportant(event.id, event.is_important)}
+                          className="w-4 h-4 text-purple-600 rounded cursor-pointer"
+                        />
+                        <label htmlFor={`important-${event.id}`} className="text-sm font-bold cursor-pointer" style={{ color: 'var(--text-color)' }}>
+                          Отметить как ВАЖНОЕ (будет вверху ленты)
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button onClick={() => handleApprove(event.id)} className="px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm">
+                          Одобрить
+                        </button>
+                        <button onClick={() => setActionModal({ id: event.id, type: 'revision' })} className="px-5 py-2 text-sm font-medium text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 transition-colors shadow-sm">
+                          На доработку
+                        </button>
+                        <button onClick={() => setActionModal({ id: event.id, type: 'reject' })} className="px-5 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+                          Отклонить
+                        </button>
+                        <button onClick={() => releaseTask(event.id)} className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+                          Вернуть в очередь
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <button onClick={() => takeTask(event.id)} className="px-5 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm" style={{ backgroundColor: 'var(--primary-color)' }}>
@@ -258,10 +285,8 @@ export default function ModeratorPage() {
         </div>
       </div>
 
-      {/* Модальное окно для отклонения / доработки */}
       {actionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="w-full max-w-md p-6 rounded-2xl shadow-xl border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"><div className="w-full max-w-md p-6 rounded-2xl shadow-xl border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-color)' }}>
               {actionModal.type === 'reject' ? 'Причина отклонения' : 'Что нужно доработать?'}
             </h3>
@@ -273,7 +298,8 @@ export default function ModeratorPage() {
               className="w-full rounded-lg border px-4 py-3 shadow-sm focus:outline-none focus:ring-1 resize-none mb-4"
               style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
             />
-            <div className="flex justify-end gap-3"><button onClick={() => { setActionModal(null); setReasonText('') }} className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => { setActionModal(null); setReasonText('') }} className="px-4 py-2 text-sm font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
                 Отмена
               </button>
               <button onClick={handleActionSubmit} className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm" style={{ backgroundColor: actionModal.type === 'reject' ? '#dc2626' : '#eab308' }}>

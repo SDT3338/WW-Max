@@ -17,6 +17,7 @@ type Event = {
   rejection_reason?: string | null
   revision_comment?: string | null
   moderator_id?: string | null
+  is_important: boolean
   author: {
     id: string
     display_name: string
@@ -31,9 +32,9 @@ export default function FeedPage() {
   const [userRole, setUserRole] = useState<string>('user')
   const [userId, setUserId] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [dbError, setDbError] = useState('')
   const router = useRouter()
 
-  // Состояния для поиска и фильтров
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
 
@@ -49,17 +50,22 @@ export default function FeedPage() {
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
       if (profile) setUserRole(profile.role)
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('events')
         .select(`
-          id, title, description, location, event_date, created_at, image_urls, status, rejection_reason, revision_comment, moderator_id,
+          id, title, description, location, event_date, created_at, image_urls, status, rejection_reason, revision_comment, moderator_id, is_important,
           author:profiles!events_author_id_fkey (id, display_name, username, avatar_url),
           reactions (user_id)
         `)
         .or(`status.eq.approved,author_id.eq.${session.user.id}`)
         .order('created_at', { ascending: false })
 
-      if (data) setEvents(data as any)
+      if (error) {
+        console.error("ПОДРОБНАЯ ОШИБКА:", error)
+        setDbError(error.message)
+      } else if (data) {
+        setEvents(data as any)
+      }
       setLoading(false)
     }
     init()
@@ -75,7 +81,7 @@ export default function FeedPage() {
     const { data } = await supabase
       .from('events')
       .select(`
-        id, title, description, location, event_date, created_at, image_urls, status, rejection_reason, revision_comment, moderator_id,
+        id, title, description, location, event_date, created_at, image_urls, status, rejection_reason, revision_comment, moderator_id, is_important,
         author:profiles!events_author_id_fkey (id, display_name, username, avatar_url),
         reactions (user_id)
       `)
@@ -85,8 +91,11 @@ export default function FeedPage() {
     if (data) setEvents(data as any)
   }
 
-  // Логика фильтрации и сортировки
-  const filteredEvents = events
+  if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
+  
+  if (dbError) return <div className="p-8 text-center font-bold text-red-500">Ошибка базы данных: {dbError}</div>
+
+  const filteredEvents = [...events]
     .filter(event => {
       if (!searchQuery) return true
       const query = searchQuery.toLowerCase()
@@ -99,19 +108,24 @@ export default function FeedPage() {
       )
     })
     .sort((a, b) => {
+      const aImportant = a.is_important || false
+      const bImportant = b.is_important || false
+
+      if (aImportant && !bImportant) return -1
+      if (!aImportant && bImportant) return 1
+      
       const dateA = new Date(a.created_at).getTime()
       const dateB = new Date(b.created_at).getTime()
+      
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
     })
-
-  if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
 
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Шапка */}
-        <div className="flex flex-col md:flex-row justify-between items-center p-4 md:p-6 rounded-2xl shadow-sm border gap-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}><Link href="/" className="flex flex-col items-center md:items-start w-full md:w-auto mb-2 md:mb-0">
+        <div className="flex flex-col md:flex-row justify-between items-center p-4 md:p-6 rounded-2xl shadow-sm border gap-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <Link href="/" className="flex flex-col items-center md:items-start w-full md:w-auto mb-2 md:mb-0">
             <span className="text-xl font-black tracking-tighter flex items-center gap-1 mb-1">
               <span style={{ color: 'var(--primary-color)' }}>WW</span>
               <span style={{ color: 'var(--text-color)' }}>-Max</span>
@@ -146,7 +160,6 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Панель поиска и фильтров */}
         <div className="flex flex-col sm:flex-row gap-3 p-4 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <div className="flex-1 relative">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-3 top-2.5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: 'var(--text-color)' }}>
@@ -172,9 +185,9 @@ export default function FeedPage() {
           </select>
         </div>
 
-        {/* Лента */}
         <div className="space-y-4">
-          {filteredEvents.length === 0 ? (<div className="p-10 rounded-2xl shadow-sm border text-center opacity-70" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          {filteredEvents.length === 0 ? (
+            <div className="p-10 rounded-2xl shadow-sm border text-center opacity-70" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
               Ничего не найдено по вашему запросу.
             </div>
           ) : (
@@ -221,16 +234,21 @@ export default function FeedPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
+                        {event.is_important && (
+                          <span className="inline-block mb-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-red-100 text-red-600 border border-red-200">
+                            Важно
+                          </span>
+                        )}
                         <h2 className="text-lg md:text-xl font-bold leading-tight break-words">{event.title}</h2>
-                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                          <Link href={`/u/profile?id=${event.author?.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary-color)' }}>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5"><Link href={`/u/profile?id=${event.author?.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary-color)' }}>
                             {event.author?.display_name || event.author?.username || 'Неизвестный'}
                           </Link>
                           {!isMyEvent && (
                             <button 
                               onClick={() => router.push(`/chat/${event.author?.id}`)}
                               className="text-xs font-medium px-2 py-0.5 rounded border hover:opacity-80 transition-colors"
-                              style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+                              style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}
+                            >
                               Написать
                             </button>
                           )}
