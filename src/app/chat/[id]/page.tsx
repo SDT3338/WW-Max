@@ -13,7 +13,6 @@ type Message = {
   created_at: string
   sender_id: string
   receiver_id: string
-  contact_note?: string | null
 }
 
 const EMOJIS = ['😀', '😂', '🥰', '😎', '😭', '🔥', '❤️', '👍', '👎', '👏', '🎉', '💩']
@@ -32,7 +31,7 @@ export default function PrivateChatPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   
-  // Состояния для заметки
+  // Заметки
   const [contactNote, setContactNote] = useState('')
   const [isEditingNote, setIsEditingNote] = useState(false)
   const [tempNote, setTempNote] = useState('')
@@ -49,28 +48,35 @@ export default function PrivateChatPage() {
       }
       setUser(session.user)
 
+      // 1. Загружаем профиль собеседника
       const { data: profile } = await supabase.from('profiles').select('username, display_name, avatar_url').eq('id', otherId).single()
       if (profile) setOtherUser(profile)
 
+      // 2. Загружаем ЛИЧНУЮ ЗАМЕТКУ из новой таблицы contacts
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('custom_name')
+        .match({ owner_id: session.user.id, contact_id: otherId })
+        .single()
+      
+      if (contactData?.custom_name) {
+        setContactNote(contactData.custom_name)
+        setTempNote(contactData.custom_name)
+      }
+
+      // 3. Загружаем сообщения
       const { data } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${session.user.id})`)
         .order('created_at', { ascending: true })
 
-      if (data) {
-        setMessages(data)
-        // Ищем псевдоним в любом из сообщений
-        const noteMsg = data.find(m => m.contact_note)
-        if (noteMsg?.contact_note) {
-          setContactNote(noteMsg.contact_note)
-          setTempNote(noteMsg.contact_note)
-        }
-      }
+      if (data) setMessages(data)
       
       setLoading(false)
       scrollToBottom()
 
+      // 4. Подписка на новые сообщения
       const channel = supabase
         .channel('private_chat')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
@@ -102,14 +108,22 @@ export default function PrivateChatPage() {
   const handleSaveNote = async () => {
     if (!user) return
     
-    // Обновляем заметку во всех сообщениях с этим пользователем (для демо это ок)
-    await supabase
-      .from('messages')
-      .update({ contact_note: tempNote })
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${user.id})`)
+    // Сохраняем или обновляем заметку в таблице contacts
+    const { error } = await supabase
+      .from('contacts')
+      .upsert({ 
+        owner_id: user.id, 
+        contact_id: otherId, 
+        custom_name: tempNote 
+      }, { 
+        onConflict: 'owner_id,contact_id' 
+      })
     
-    setContactNote(tempNote)
-    setIsEditingNote(false)
+    if (!error) {
+      setContactNote(tempNote)
+      setIsEditingNote(false)
+    } else {alert('Ошибка при сохранении: ' + error.message)
+    }
   }
 
   const handleSend = async (e: React.FormEvent) => {
@@ -137,12 +151,12 @@ export default function PrivateChatPage() {
     setImageFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
 
+    // Отправляем сообщение (БЕЗ поля contact_note, оно нам больше не нужно в сообщениях)
     const { error } = await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: otherId,
       content: content || '',
-      image_url: uploadedImageUrl,
-      contact_note: contactNote // Сохраняем заметку вместе с сообщением
+      image_url: uploadedImageUrl
     })
 
     if (!error) {
@@ -196,8 +210,7 @@ export default function PrivateChatPage() {
         </div>
 
         {/* Поле для заметки */}
-        {isEditingNote && (
-          <div className="p-3 border-b flex gap-2" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)' }}>
+        {isEditingNote && (<div className="p-3 border-b flex gap-2" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)' }}>
             <input 
               type="text" 
               value={tempNote} 
@@ -205,7 +218,7 @@ export default function PrivateChatPage() {
               placeholder="Личная заметка (имя)..."
               className="flex-1 rounded border px-3 py-1 text-sm bg-transparent"
               style={{ borderColor: 'var(--card-border)' }}
-              />
+            />
             <button onClick={handleSaveNote} className="px-3 py-1 text-xs text-white rounded" style={{ backgroundColor: 'var(--primary-color)' }}>Сохранить</button>
           </div>
         )}
@@ -264,8 +277,7 @@ export default function PrivateChatPage() {
               </button>
               <button type="button" onClick={() => fileInputRef.current?.click()} className="text-2xl opacity-50 hover:opacity-100 transition-opacity">
                 📎
-              </button>
-              <input type="file" accept="image/*" ref={fileInputRef} onChange={(e) => setImageFile(e.target.files?.[0] || null)} className="hidden" />
+              </button><input type="file" accept="image/*" ref={fileInputRef} onChange={(e) => setImageFile(e.target.files?.[0] || null)} className="hidden" />
             </div>
             
             <input

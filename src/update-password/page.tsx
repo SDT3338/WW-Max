@@ -8,22 +8,32 @@ export default function UpdatePasswordPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [checkingSession, setCheckingSession] = useState(true)
-  const [isValidSession, setIsValidSession] = useState(false)
+  const [isRecovery, setIsRecovery] = useState(false)
+  const [checking, setChecking] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    // Небольшая задержка, чтобы Supabase успел обработать токен из URL
-    const timer = setTimeout(() => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          setIsValidSession(true)
-        }
-        setCheckingSession(false)
-      })
-    }, 500)
+    // Слушаем событие восстановления пароля от Supabase
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth event:", event)
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true)
+        setChecking(false)
+      }
+    })
 
-    return () => clearTimeout(timer)
+    // Проверяем, есть ли уже активная сессия (если ссылка уже обработана)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsRecovery(true)
+      }
+      // Даем Supabase 2 секунды, чтобы обработать хэш
+      setTimeout(() => setChecking(false), 2000)
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
   }, [])
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -42,16 +52,16 @@ export default function UpdatePasswordPage() {
     setLoading(false)
   }
 
-  if (checkingSession) {
+  if (checking) {
     return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Проверка ссылки...</div>
   }
 
-  if (!isValidSession) {
+  if (!isRecovery) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md p-8 rounded-2xl shadow-sm border text-center" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
           <h1 className="text-xl font-bold mb-4 text-red-500">Ссылка недействительна</h1>
-          <p className="text-sm opacity-70 mb-6">Возможно, срок действия ссылки истек, или вы перешли по ней повторно.</p>
+          <p className="text-sm opacity-70 mb-6">Срок действия ссылки истек или она была использована. Запросите сброс пароля заново.</p>
           <button 
             onClick={() => router.push('/login')}
             className="px-6 py-2 rounded-lg text-white font-medium"
@@ -86,7 +96,6 @@ export default function UpdatePasswordPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              placeholder="Минимум 6 символов"
               className="block w-full rounded-lg border px-4 py-2.5 shadow-sm focus:outline-none focus:ring-1"
               style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
             />

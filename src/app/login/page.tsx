@@ -102,7 +102,11 @@ export default function AuthPage() {
           </button>
         </form>
 
-        <div className="text-center text-sm mt-6">
+        <div className="flex flex-col items-center gap-3 mt-6 text-sm">
+          <Link href="/forgot-password" className="text-xs opacity-60 hover:opacity-100 transition-opacity">
+            Забыли пароль?
+          </Link>
+          
           <Link href="/register" className="font-medium transition-colors hover:opacity-80" style={{ color: 'var(--primary-color)' }}>
             Нет аккаунта? Зарегистрироваться
           </Link>

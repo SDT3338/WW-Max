@@ -25,6 +25,7 @@ type GlobalUser = {
 export default function ChatListPage() {
   const [dialogs, setDialogs] = useState<Dialog[]>([])
   const [globalUsers, setGlobalUsers] = useState<GlobalUser[]>([])
+  const [contacts, setContacts] = useState<Record<string, string>>({})
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -39,7 +40,7 @@ export default function ChatListPage() {
       }
       setUser(session.user)
 
-      // 1. Загружаем существующие диалоги
+      // 1. Загружаем диалоги
       const { data: messagesData } = await supabase
         .from('messages')
         .select(`
@@ -68,11 +69,25 @@ export default function ChatListPage() {
         setDialogs(Array.from(uniqueDialogs.values()) as Dialog[])
       }
 
-      // 2. Загружаем всех пользователей (для глобального поиска)
+      // 2. Загружаем контакты (кастомные имена)
+      const { data: contactsData } = await supabase
+        .from('contacts')
+        .select('contact_id, custom_name')
+        .eq('owner_id', session.user.id)
+      
+      if (contactsData) {
+        const contactsMap: Record<string, string> = {}
+        contactsData.forEach(c => {
+          if (c.custom_name) contactsMap[c.contact_id] = c.custom_name
+        })
+        setContacts(contactsMap)
+      }
+
+      // 3. Загружаем всех пользователей для глобального поиска
       const { data: usersData } = await supabase
         .from('profiles')
         .select('id, username, display_name, avatar_url')
-        .neq('id', session.user.id) // Исключаем себя
+        .neq('id', session.user.id)
 
       if (usersData) setGlobalUsers(usersData)
 
@@ -81,23 +96,25 @@ export default function ChatListPage() {
     fetchData()
   }, [router])
 
-  // Логика отображения
   const isSearching = searchQuery.length > 0
-  
   const filteredDialogs = isSearching ? [] : dialogs
-
+  
+  // Ищем по настоящему имени, нику и по личной заметке
   const filteredGlobalUsers = isSearching
-    ? globalUsers.filter(u => 
-        (u.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.username || '').toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? globalUsers.filter(u => {
+        const query = searchQuery.toLowerCase()
+        const realName = (u.display_name || '').toLowerCase()
+        const username = (u.username || '').toLowerCase()
+        const customName = (contacts[u.id] || '').toLowerCase() 
+        
+        return realName.includes(query) || username.includes(query) || customName.includes(query)
+      })
     : []
 
   if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
-      <div className="w-full max-w-3xl rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center"><div className="w-full max-w-3xl rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
         
         <div className="p-6 border-b flex justify-between items-center" style={{ borderColor: 'var(--card-border)' }}>
           <div>
@@ -107,7 +124,7 @@ export default function ChatListPage() {
           <Link href="/feed" className="px-4 py-2 text-sm font-medium rounded-lg transition-colors" style={{ backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)' }}>
             В ленту
           </Link>
-          </div>
+        </div>
 
         <div className="p-4 space-y-2">
           <input
@@ -126,32 +143,37 @@ export default function ChatListPage() {
               {filteredGlobalUsers.length === 0 ? (
                 <div className="text-sm opacity-50 px-2">Пользователи не найдены.</div>
               ) : (
-                filteredGlobalUsers.map(gu => (
-                  <div key={gu.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-black/5 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
-                        {gu.avatar_url ? (
-                          <img src={gu.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-500">
-                            {gu.username?.charAt(0).toUpperCase()}
-                          </div>
-                        )}
+                filteredGlobalUsers.map(gu => {
+                  const customName = contacts[gu.id]
+                  return (
+                    <div key={gu.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-black/5 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
+                          {gu.avatar_url ? (
+                            <img src={gu.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-500">
+                              {gu.username?.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm">
+                            {customName || gu.display_name || gu.username}
+                          </p>
+                          <p className="text-xs opacity-50">@{gu.username}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-sm">{gu.display_name || gu.username}</p>
-                        <p className="text-xs opacity-50">@{gu.username}</p>
-                      </div>
+                      <button 
+                        onClick={() => router.push(`/chat/${gu.id}`)}
+                        className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
+                        style={{ backgroundColor: 'var(--primary-color)' }}
+                      >
+                        Написать
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => router.push(`/chat/${gu.id}`)}
-                      className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
-                      style={{ backgroundColor: 'var(--primary-color)' }}
-                    >
-                      Написать
-                    </button>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
@@ -165,31 +187,34 @@ export default function ChatListPage() {
                   У вас пока нет сообщений. Введите имя в поиск, чтобы найти собеседника.
                 </div>
               ) : (
-                filteredDialogs.map((dialog) => (
-                  <div 
-                    key={dialog.id} 
-                    onClick={() => router.push(`/chat/${dialog.otherUser.id}`)}
-                    className="flex items-center gap-4 p-4 rounded-xl border border-transparent hover:border-[var(--card-border)] hover:bg-black/5 cursor-pointer transition-all"
-                  >
-                    <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
-                      {dialog.otherUser?.avatar_url ? (
-                        <img src={dialog.otherUser.avatar_url} alt="Аватар" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-lg font-bold text-gray-500">
-                          {dialog.otherUser?.username?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-1">
-                        <h3 className="font-bold truncate">{dialog.otherUser?.display_name || dialog.otherUser?.username}
-                        </h3>
-                        <span className="text-xs opacity-50">{new Date(dialog.created_at).toLocaleDateString('ru-RU')}</span>
+                filteredDialogs.map((dialog) => {
+                  const customName = contacts[dialog.otherUser.id]
+                  return (
+                    <div 
+                      key={dialog.id}onClick={() => router.push(`/chat/${dialog.otherUser.id}`)}
+                      className="flex items-center gap-4 p-4 rounded-xl border border-transparent hover:border-[var(--card-border)] hover:bg-black/5 cursor-pointer transition-all"
+                    >
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+                        {dialog.otherUser?.avatar_url ? (
+                          <img src={dialog.otherUser.avatar_url} alt="Аватар" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-lg font-bold text-gray-500">
+                            {dialog.otherUser?.username?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-sm opacity-70 truncate">{dialog.content || 'Фото'}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline mb-1">
+                          <h3 className="font-bold truncate">
+                            {customName || dialog.otherUser?.display_name || dialog.otherUser?.username}
+                          </h3>
+                          <span className="text-xs opacity-50">{new Date(dialog.created_at).toLocaleDateString('ru-RU')}</span>
+                        </div>
+                        <p className="text-sm opacity-70 truncate">{dialog.content || 'Фото'}</p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
