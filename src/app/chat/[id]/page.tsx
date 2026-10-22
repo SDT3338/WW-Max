@@ -9,10 +9,13 @@ import { User } from '@supabase/supabase-js'
 type Message = {
   id: string
   content: string
+  image_url?: string | null
   created_at: string
   sender_id: string
   receiver_id: string
 }
+
+const EMOJIS = ['😀', '😂', '🥰', '😎', '😭', '🔥', '❤️', '👍', '👎', '👏', '🎉', '💩']
 
 export default function PrivateChatPage() {
   const router = useRouter()
@@ -21,10 +24,15 @@ export default function PrivateChatPage() {
 
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [showEmojis, setShowEmojis] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [otherUser, setOtherUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -35,27 +43,16 @@ export default function PrivateChatPage() {
       }
       setUser(session.user)
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('username, display_name, avatar_url')
-        .eq('id', otherId)
-        .single()
-      
-      if (profileError) {
-        console.error("Ошибка загрузки профиля:", profileError)
-      } else {
-        setOtherUser(profile)
-      }
+      const { data: profile } = await supabase.from('profiles').select('username, display_name, avatar_url').eq('id', otherId).single()
+      if (profile) setOtherUser(profile)
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${session.user.id})`)
         .order('created_at', { ascending: true })
 
-      if (error) console.error("Ошибка загрузки сообщений:", error)
       if (data) setMessages(data)
-      
       setLoading(false)
       scrollToBottom()
 
@@ -73,105 +70,154 @@ export default function PrivateChatPage() {
         })
         .subscribe()
 
-      return () => {
-        supabase.removeChannel(channel)
-      }
+      return () => { supabase.removeChannel(channel) }
     }
     init()
   }, [router, otherId])
 
   const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
+    setTimeout(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, 100)
   }
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const addEmoji = (emoji: string) => {
+    setNewMessage(prev => prev + emoji)
+    setShowEmojis(false)
+  }
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim() || !user) return
+    if ((!newMessage.trim() && !imageFile) || !user) return
+
+    setSending(true)
+    let uploadedImageUrl = null
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split('.').pop()
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`
+      const filePath = `chat/${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from('events').upload(filePath, imageFile)
+      
+      if (!uploadError) {
+        const { data } = supabase.storage.from('events').getPublicUrl(filePath)
+        uploadedImageUrl = data.publicUrl
+      }
+    }
 
     const content = newMessage
     setNewMessage('')
+    setImageFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
 
     const { error } = await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: otherId,
-      content: content
+      content: content || '',
+      image_url: uploadedImageUrl
     })
 
-    if (error) {
-      console.error("Ошибка отправки:", error)
-      alert("Ошибка при отправке: " + error.message)
+    if (!error) {
+      const { data: myProfile } = await supabase.from('profiles').select('username, display_name').eq('id', user.id).single()
+      const senderName = myProfile?.display_name || myProfile?.username || 'Пользователь'
+      const notifText = content ? `Новое сообщение от ${senderName}: "${content}"` : `Новое фото от ${senderName}`
+      
+      await supabase.from('notifications').insert({ user_id: otherId, content: notifText })
     }
+    
+    setSending(false)
   }
 
   if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
-      <div className="w-full max-w-3xl flex-1 flex flex-col h-[85vh] rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+    <div className="flex flex-col h-[100dvh] md:h-screen md:p-8 items-center bg-[var(--bg-color)]">
+      <div className="w-full max-w-3xl flex-1 flex flex-col md:rounded-2xl md:shadow-sm md:border overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
         
-        <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: 'var(--card-border)' }}>
-          <div className="flex items-center gap-3">
-            <Link href="/chat" className="text-sm font-medium opacity-50 hover:opacity-100 transition-opacity mr-2">
-              &larr; Назад
+        {/* Шапка чата */}
+        <div className="p-3 md:p-4 border-b flex justify-between items-center bg-[var(--card-bg)] z-10" style={{ borderColor: 'var(--card-border)' }}>
+          <div className="flex items-center gap-2 md:gap-3">
+            <Link href="/chat" className="p-1 md:p-2 -ml-1 text-lg opacity-50 hover:opacity-100 transition-opacity">
+              &larr;
             </Link>
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden bg-gray-200">
               {otherUser?.avatar_url ? (
                 <img src={otherUser.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500">
-                  {otherUser?.username?.charAt(0).toUpperCase() || '?'}
+                  {otherUser?.username?.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
-            <div>
-              <h1 className="text-lg font-bold leading-tight" style={{ color: 'var(--primary-text)' }}>
-                {otherUser?.display_name || otherUser?.username || 'Пользователь'}
-              </h1>
-            </div>
+            <h1 className="text-base md:text-lg font-bold truncate" style={{ color: 'var(--primary-text)' }}>
+              {otherUser?.display_name || otherUser?.username}
+            </h1>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center opacity-50 mt-10">История сообщений пуста. Напишите первым!</div>
-          ) : (
-            messages.map((msg) => {
-              const isMe = msg.sender_id === user?.id
-              return (
-                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] p-3 rounded-2xl text-sm ${isMe ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-black/5'}`} 
-                       style={{ backgroundColor: isMe ? 'var(--primary-color)' : undefined, color: isMe ? 'white' : 'var(--text-color)' }}>
-                    {msg.content}
-                  </div>
+        {/* Сообщения */}
+        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4 bg-[var(--bg-color)]">
+          {messages.map((msg) => {
+            const isMe = msg.sender_id === user?.id
+            return (
+              <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                <div className={`max-w-[85%] md:max-w-[75%] p-2.5 md:p-3 rounded-2xl text-sm md:text-base ${isMe ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-[var(--card-bg)] shadow-sm'}`} 
+                     style={{ backgroundColor: isMe ? 'var(--primary-color)' : undefined, color: isMe ? 'white' : 'var(--text-color)' }}>
+                  {msg.image_url && (
+                    <img src={msg.image_url} alt="Вложение" className="max-w-full rounded-lg mb-1.5 md:mb-2" />
+                  )}
+                  {msg.content && <p className="break-words">{msg.content}</p>}
                 </div>
-              )
-            })
-          )}
+              </div>
+            )
+          })}
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-          <form onSubmit={sendMessage} className="flex gap-3">
+        {/* Панель эмодзи */}
+        {showEmojis && (
+          <div className="absolute bottom-[70px] left-2 md:left-4 p-2 rounded-xl shadow-lg border flex gap-1 flex-wrap max-w-[260px] md:max-w-xs z-20" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            {EMOJIS.map(e => (
+              <button key={e} type="button" onClick={() => addEmoji(e)} className="text-2xl hover:scale-125 transition-transform p-1">
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Поле ввода */}
+        <div className="p-2 md:p-4 border-t bg-[var(--card-bg)] pb-safe" style={{ borderColor: 'var(--card-border)' }}>
+          {imageFile && (
+            <div className="mb-2 text-xs font-medium px-2 flex justify-between items-center" style={{ color: 'var(--primary-color)' }}>
+              <span className="truncate max-w-[80%]">Выбрано: {imageFile.name}</span>
+              <button type="button" onClick={() => setImageFile(null)} className="text-red-500 font-bold px-2">✕</button>
+            </div>
+          )}
+          <form onSubmit={handleSend} className="flex gap-1.5 md:gap-2 items-end">
+            <div className="flex gap-1 md:gap-2 pb-1">
+              <button type="button" onClick={() => setShowEmojis(!showEmojis)} className="text-2xl opacity-50 hover:opacity-100 transition-opacity">
+                😊
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="text-2xl opacity-50 hover:opacity-100 transition-opacity">
+                📎
+              </button>
+              <input type="file" accept="image/*" ref={fileInputRef} onChange={(e) => setImageFile(e.target.files?.[0] || null)} className="hidden" />
+            </div>
+            
             <input
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Написать сообщение..."
-              className="flex-1 rounded-lg border px-4 py-2.5 shadow-sm focus:outline-none focus:ring-1"
+              placeholder="Сообщение..."
+              className="flex-1 min-w-0 rounded-2xl border px-3 md:px-4 py-2 md:py-2.5 text-sm md:text-base shadow-sm focus:outline-none focus:ring-1"
               style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
             />
-            <button
-              type="submit"
-              className="px-5 py-2.5 rounded-lg text-white font-medium transition-colors shadow-sm"
-              style={{ backgroundColor: 'var(--primary-color)' }}
-            >
-              Отправить
+            
+            <button type="submit" disabled={sending} className="px-3 md:px-5 py-2 md:py-2.5 rounded-xl text-white text-sm md:text-base font-medium transition-colors shadow-sm disabled:opacity-50 mb-0.5" style={{ backgroundColor: 'var(--primary-color)' }}>
+              {sending ? '...' : <span className="hidden md:inline">Отправить</span>}
+              {sending ? '' : <span className="md:hidden">➤</span>}
             </button>
           </form>
         </div>
-
       </div>
     </div>
   )

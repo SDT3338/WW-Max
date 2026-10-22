@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
+import { useRouter } from 'next/navigation'
 
 export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [user, setUser] = useState<User | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     const init = async () => {
@@ -18,13 +20,21 @@ export default function NotificationBell() {
 
       fetchNotifications(session.user.id)
 
-      // Подписка на новые уведомления
-      supabase.channel('custom-all-channel')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` }, (payload) => {
-          setNotifications(prev => [payload.new, ...prev])
-          setUnreadCount(prev => prev + 1)
-        })
+      const channel = supabase
+        .channel(`notifications-${session.user.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` },
+          (payload) => {
+            setNotifications(prev => [payload.new as any, ...prev])
+            setUnreadCount(prev => prev + 1)
+          }
+        )
         .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
     init()
   }, [])
@@ -35,7 +45,7 @@ export default function NotificationBell() {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(10)
+      .limit(15)
 
     if (data) {
       setNotifications(data)
@@ -69,23 +79,46 @@ export default function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-xl shadow-lg border z-50 overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
-          <div className="p-3 border-b font-bold text-sm" style={{ borderColor: 'var(--card-border)' }}>Уведомления</div>
-          <div className="max-h-64 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <div className="p-4 text-center text-xs opacity-50">Нет уведомлений</div>
-            ) : (
-              notifications.map(n => (
-                <div key={n.id} className={`p-3 border-b text-sm ${n.is_read ? 'opacity-50' : ''}`} style={{ borderColor: 'var(--card-border)' }}>
-                  {n.content}
-                  <div className="text-xs opacity-40 mt-1">
-                    {new Date(n.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
-                  </div>
+        <>
+          <div className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent" onClick={() => setIsOpen(false)}></div>
+          
+          <div className="fixed sm:absolute top-16 sm:top-auto left-1/2 sm:left-auto -translate-x-1/2 sm:translate-x-0 sm:right-0 sm:mt-2 w-[90vw] sm:w-80 max-w-sm rounded-xl shadow-lg border z-50 overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+            <div className="p-3 border-b font-bold text-sm flex justify-between items-center" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+              <span>Уведомления</span>
+              <button onClick={() => setIsOpen(false)} className="sm:hidden text-gray-500 hover:text-gray-800 text-lg leading-none">&times;</button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="p-4 text-center text-xs opacity-50" style={{ color: 'var(--text-color)' }}>
+                  Нет уведомлений
                 </div>
-              ))
-            )}
+              ) : (
+                notifications.map(n => {
+                  const isMessage = n.content.startsWith('Новое сообщение от') || n.content.startsWith('Новое фото от')
+                  
+                  return (
+                    <div 
+                      key={n.id} 
+                      onClick={() => {
+                        if (isMessage) {
+                          setIsOpen(false)
+                          router.push('/chat') 
+                        }
+                      }}
+                      className={`p-3 border-b text-sm transition-colors ${n.is_read ? 'opacity-50' : ''} ${isMessage ? 'cursor-pointer hover:bg-black/5' : ''}`} 
+                      style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}
+                    >
+                      {n.content}
+                      <div className="text-xs opacity-40 mt-1">
+                        {new Date(n.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
