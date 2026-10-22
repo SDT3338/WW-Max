@@ -22,6 +22,10 @@ export default function ProfilePage() {
   
   const [subscriptions, setSubscriptions] = useState<any[]>([])
 
+  // Состояния для смены пароля
+  const [resetEmailSent, setResetEmailSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+
   const router = useRouter()
 
   useEffect(() => {
@@ -137,7 +141,6 @@ export default function ProfilePage() {
     setAvatarFile(null)
     setSaving(false)
   }
-
   const handleUnsubscribe = async (followingId: string) => {
     if (!user) return
     
@@ -149,6 +152,23 @@ export default function ProfilePage() {
     if (!error) {
       setSubscriptions(subscriptions.filter(s => s.following_id !== followingId))
     }
+  }
+
+  const handleResetPassword = async () => {
+    if (!user?.email) return
+    setResetLoading(true)
+    setResetEmailSent(false)
+
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    })
+
+    if (error) {
+      alert('Ошибка: ' + error.message)
+    } else {
+      setResetEmailSent(true)
+    }
+    setResetLoading(false)
   }
 
   const handleLogout = async () => {
@@ -273,6 +293,33 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Блок безопасности */}
+      <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+        <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>Безопасность</h2>
+        
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border bg-black/5" style={{ borderColor: 'var(--card-border)' }}>
+          <div>
+            <p className="font-bold text-sm">Смена пароля</p>
+            <p className="text-xs opacity-70 mt-1">Мы отправим ссылку для сброса пароля на вашу почту.</p>
+          </div>
+          <button
+            onClick={handleResetPassword}
+            disabled={resetLoading}
+            className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors whitespace-nowrap"
+            style={{ backgroundColor: 'var(--primary-color)' }}
+          >
+            {resetLoading ? 'Отправка...' : 'Изменить пароль'}
+          </button>
+        </div>
+        
+        {resetEmailSent && (
+          <div className="mt-4 p-3 text-sm rounded-lg font-medium bg-green-50 text-green-800">
+            Письмо для сброса пароля отправлено на {user?.email}. Проверьте почту!
+          </div>
+        )}
+      </div>
+
+      {/* Блок подписок */}
       <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
         <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>Мои подписки</h2>
         

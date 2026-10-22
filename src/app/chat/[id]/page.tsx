@@ -13,6 +13,7 @@ type Message = {
   created_at: string
   sender_id: string
   receiver_id: string
+  contact_note?: string | null
 }
 
 const EMOJIS = ['😀', '😂', '🥰', '😎', '😭', '🔥', '❤️', '👍', '👎', '👏', '🎉', '💩']
@@ -31,6 +32,11 @@ export default function PrivateChatPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   
+  // Состояния для заметки
+  const [contactNote, setContactNote] = useState('')
+  const [isEditingNote, setIsEditingNote] = useState(false)
+  const [tempNote, setTempNote] = useState('')
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -52,7 +58,16 @@ export default function PrivateChatPage() {
         .or(`and(sender_id.eq.${session.user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${session.user.id})`)
         .order('created_at', { ascending: true })
 
-      if (data) setMessages(data)
+      if (data) {
+        setMessages(data)
+        // Ищем псевдоним в любом из сообщений
+        const noteMsg = data.find(m => m.contact_note)
+        if (noteMsg?.contact_note) {
+          setContactNote(noteMsg.contact_note)
+          setTempNote(noteMsg.contact_note)
+        }
+      }
+      
       setLoading(false)
       scrollToBottom()
 
@@ -84,6 +99,19 @@ export default function PrivateChatPage() {
     setShowEmojis(false)
   }
 
+  const handleSaveNote = async () => {
+    if (!user) return
+    
+    // Обновляем заметку во всех сообщениях с этим пользователем (для демо это ок)
+    await supabase
+      .from('messages')
+      .update({ contact_note: tempNote })
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${user.id})`)
+    
+    setContactNote(tempNote)
+    setIsEditingNote(false)
+  }
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!newMessage.trim() && !imageFile) || !user) return
@@ -113,7 +141,8 @@ export default function PrivateChatPage() {
       sender_id: user.id,
       receiver_id: otherId,
       content: content || '',
-      image_url: uploadedImageUrl
+      image_url: uploadedImageUrl,
+      contact_note: contactNote // Сохраняем заметку вместе с сообщением
     })
 
     if (!error) {
@@ -127,13 +156,21 @@ export default function PrivateChatPage() {
     setSending(false)
   }
 
+  // Группировка по датам
+  const groupedMessages = messages.reduce((groups: any, message) => {
+    const date = new Date(message.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    if (!groups[date]) groups[date] = []
+    groups[date].push(message)
+    return groups
+  }, {})
+
   if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
 
   return (
     <div className="flex flex-col h-[100dvh] md:h-screen md:p-8 items-center bg-[var(--bg-color)]">
       <div className="w-full max-w-3xl flex-1 flex flex-col md:rounded-2xl md:shadow-sm md:border overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
         
-        {/* Шапка чата */}
+        {/* Шапка */}
         <div className="p-3 md:p-4 border-b flex justify-between items-center bg-[var(--card-bg)] z-10" style={{ borderColor: 'var(--card-border)' }}>
           <div className="flex items-center gap-2 md:gap-3">
             <Link href="/chat" className="p-1 md:p-2 -ml-1 text-lg opacity-50 hover:opacity-100 transition-opacity">
@@ -148,32 +185,60 @@ export default function PrivateChatPage() {
                 </div>
               )}
             </div>
-            <h1 className="text-base md:text-lg font-bold truncate" style={{ color: 'var(--primary-text)' }}>
-              {otherUser?.display_name || otherUser?.username}
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-base md:text-lg font-bold leading-tight flex items-center gap-2" style={{ color: 'var(--primary-text)' }}>
+                {contactNote || otherUser?.display_name || otherUser?.username}
+                <button onClick={() => setIsEditingNote(!isEditingNote)} className="text-sm opacity-40 hover:opacity-100">✎</button>
+              </h1>
+              {contactNote && <span className="text-xs opacity-50">@{otherUser?.username}</span>}
+            </div>
           </div>
         </div>
 
+        {/* Поле для заметки */}
+        {isEditingNote && (
+          <div className="p-3 border-b flex gap-2" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)' }}>
+            <input 
+              type="text" 
+              value={tempNote} 
+              onChange={e => setTempNote(e.target.value)} 
+              placeholder="Личная заметка (имя)..."
+              className="flex-1 rounded border px-3 py-1 text-sm bg-transparent"
+              style={{ borderColor: 'var(--card-border)' }}
+              />
+            <button onClick={handleSaveNote} className="px-3 py-1 text-xs text-white rounded" style={{ backgroundColor: 'var(--primary-color)' }}>Сохранить</button>
+          </div>
+        )}
+
         {/* Сообщения */}
-        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4 bg-[var(--bg-color)]">
-          {messages.map((msg) => {
-            const isMe = msg.sender_id === user?.id
-            return (
-              <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div className={`max-w-[85%] md:max-w-[75%] p-2.5 md:p-3 rounded-2xl text-sm md:text-base ${isMe ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-[var(--card-bg)] shadow-sm'}`} 
-                     style={{ backgroundColor: isMe ? 'var(--primary-color)' : undefined, color: isMe ? 'white' : 'var(--text-color)' }}>
-                  {msg.image_url && (
-                    <img src={msg.image_url} alt="Вложение" className="max-w-full rounded-lg mb-1.5 md:mb-2" />
-                  )}
-                  {msg.content && <p className="break-words">{msg.content}</p>}
-                </div>
-              </div>
-            )
-          })}
+        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 bg-[var(--bg-color)]">
+          {Object.keys(groupedMessages).map(date => (
+            <div key={date}>
+              <div className="text-center text-xs font-bold opacity-40 my-4 uppercase">{date}</div>
+              {groupedMessages[date].map((msg: Message) => {
+                const isMe = msg.sender_id === user?.id
+                return (
+                  <div key={msg.id} className={`flex flex-col mb-3 ${isMe ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[85%] md:max-w-[75%] p-2.5 md:p-3 rounded-2xl text-sm md:text-base ${isMe ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-[var(--card-bg)] shadow-sm'}`} 
+                        style={{ backgroundColor: isMe ? 'var(--primary-color)' : undefined, color: isMe ? 'white' : 'var(--text-color)' }}>
+                      {msg.image_url && (
+                        <img src={msg.image_url} alt="Вложение" className="max-w-full rounded-lg mb-1.5 md:mb-2" />
+                      )}
+                      {msg.content && <p className="break-words">{msg.content}</p>}
+                      
+                      <div className={`text-[10px] mt-1 text-right ${isMe ? 'text-white/70' : 'opacity-50'}`}>
+                        {new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Панель эмодзи */}
+        {/* Эмодзи */}
         {showEmojis && (
           <div className="absolute bottom-[70px] left-2 md:left-4 p-2 rounded-xl shadow-lg border flex gap-1 flex-wrap max-w-[260px] md:max-w-xs z-20" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
             {EMOJIS.map(e => (
@@ -184,7 +249,7 @@ export default function PrivateChatPage() {
           </div>
         )}
 
-        {/* Поле ввода */}
+        {/* Ввод */}
         <div className="p-2 md:p-4 border-t bg-[var(--card-bg)] pb-safe" style={{ borderColor: 'var(--card-border)' }}>
           {imageFile && (
             <div className="mb-2 text-xs font-medium px-2 flex justify-between items-center" style={{ color: 'var(--primary-color)' }}>

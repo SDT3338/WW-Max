@@ -21,7 +21,6 @@ export default function LandingPage() {
           <span style={{ color: 'var(--primary-color)' }}>WW</span>
           <span style={{ color: 'var(--text-color)' }}>-Max</span>
         </div>
-        
         <div className="flex gap-3">
           {isLoggedIn ? (
             <Link 
@@ -72,7 +71,7 @@ export default function LandingPage() {
           ) : (
             <>
               <Link 
-                href="/login"
+                href="/register"
                 className="px-8 py-4 text-base font-bold text-white rounded-xl shadow-lg transition-transform hover:-translate-y-1"
                 style={{ backgroundColor: 'var(--primary-color)' }}
               >
