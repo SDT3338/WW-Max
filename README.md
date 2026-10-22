@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WW-Max
 
-## Getting Started
+**WW-Max** — это умная лента новостей для студентов. Платформа, где можно делиться анонсами мероприятий, прикреплять фотографии, общаться в личных сообщениях и быть в курсе всех событий университета.
 
-First, run the development server:
+## Основные возможности
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+* **Публикация новостей:** Создание анонсов с заголовком, описанием, местом, датой и загрузкой до 3-х фотографий (до 2 МБ каждая).
+* **Премодерация:** Все новости проходят ручную проверку. Модератор может одобрить пост, отклонить (с указанием причины) или отправить на доработку.
+* **Роли и безопасность:** Разделение на Студентов, Модераторов и Администраторов. Встроенная панель администратора для управления ролями.
+* **Блокировка заявок:** Если модератор берет новость в работу, другие модераторы видят, что она занята.
+* **Система «Важное»:** Модераторы могут выделять важные новости, чтобы они всегда отображались вверху ленты.
+* **Личные сообщения (Чат):** Общение в реальном времени. Поддержка картинок, эмодзи, разделение по датам и возможность давать собеседникам личные заметки.
+* **Уведомления:** Колокольчик, который сообщает о статусе модерации, новых постах от подписок и новых сообщениях.
+* **Подписки:** Возможность подписаться на автора и следить за его публикациями. Глобальный поиск пользователей.
+* **Система скинов:** 3 темы на выбор — Светлая, Темная и Синяя.
+* **Адаптивность:** Полностью адаптивный дизайн для смартфонов и ПК.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Стек технологий
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Frontend:** Next.js 16 (App Router), React, TypeScript, Tailwind CSS.
+* **Backend & БД:** Supabase (PostgreSQL, Auth, Storage, Realtime).
+* **Хостинг:** Layero (доступен без VPN).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Ссылка на проект
 
-## Learn More
+Работающая версия доступна по адресу: 
+**[https://ww-max-cli.layero.app](https://ww-max-cli.layero.app)**
 
-To learn more about Next.js, take a look at the following resources:
+## Архитектура базы данных
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+В проекте используются следующие основные таблицы (Supabase PostgreSQL):
+* `profiles` — профили пользователей (роли, аватарки, био).
+* `events` — новости и мероприятия (статусы модерации, фото, важность).
+* `messages` — личные сообщения (включая вложения и заметки).
+* `notifications` — система уведомлений.
+* `subscriptions` — подписки на авторов.
+* `reactions` — лайки на постах.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Безопасность данных обеспечена с помощью Row Level Security (RLS) в Supabase.
