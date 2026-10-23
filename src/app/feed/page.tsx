@@ -27,16 +27,55 @@ type Event = {
   reactions: { user_id: string }[]
 }
 
+const FeedSkeleton = () => (
+  <div className="space-y-4">
+    {[1, 2, 3].map((i) => (
+      <div key={i} className="p-4 md:p-6 rounded-2xl border animate-pulse-slow" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+        <div className="flex gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div className="flex-1 space-y-2 py-1">
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
+          </div>
+        </div>
+        <div className="space-y-2 mb-4">
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
+        </div>
+        <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded-xl w-full mb-4"></div>
+        <div className="flex justify-between">
+          <div className="h-6 w-20 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+          <div className="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+        </div>
+      </div>
+    ))}
+  </div>
+)
+
 export default function FeedPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [userRole, setUserRole] = useState<string>('user')
   const [userId, setUserId] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [dbError, setDbError] = useState('')
+  const [showScrollTop, setShowScrollTop] = useState(false)
   const router = useRouter()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 300) {
+        setShowScrollTop(true)
+      } else {
+        setShowScrollTop(false)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -74,8 +113,7 @@ export default function FeedPage() {
   const toggleReaction = async (eventId: string, hasReacted: boolean) => {
     if (hasReacted) {
       await supabase.from('reactions').delete().match({ event_id: eventId, user_id: userId })
-    } else {
-      await supabase.from('reactions').insert({ event_id: eventId, user_id: userId })
+    } else {await supabase.from('reactions').insert({ event_id: eventId, user_id: userId })
     }
     
     const { data } = await supabase
@@ -91,7 +129,19 @@ export default function FeedPage() {
     if (data) setEvents(data as any)
   }
 
-  if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
+  if (loading) {
+    return (
+      <div className="min-h-screen p-4 md:p-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="p-4 md:p-6 rounded-2xl border animate-pulse-slow" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+             <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4"></div>
+             <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+          </div>
+          <FeedSkeleton />
+        </div>
+      </div>
+    )
+  }
   
   if (dbError) return <div className="p-8 text-center font-bold text-red-500">Ошибка базы данных: {dbError}</div>
 
@@ -121,7 +171,7 @@ export default function FeedPage() {
     })
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
+    <div className="min-h-screen p-4 md:p-8 relative">
       <div className="max-w-4xl mx-auto space-y-6">
         
         <div className="flex flex-col md:flex-row justify-between items-center p-4 md:p-6 rounded-2xl shadow-sm border gap-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
@@ -144,9 +194,7 @@ export default function FeedPage() {
               <Link href="/moderator" className="px-3 py-1.5 text-xs md:text-sm md:px-4 md:py-2 font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
                 Модерация
               </Link>
-            )}
-            
-            <Link href="/chat" className="px-3 py-1.5 text-xs md:text-sm md:px-4 md:py-2 font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+            )}<Link href="/chat" className="px-3 py-1.5 text-xs md:text-sm md:px-4 md:py-2 font-medium rounded-lg border hover:opacity-80 transition-colors" style={{ borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
               Сообщения
             </Link>
 
@@ -206,8 +254,7 @@ export default function FeedPage() {
                       event.status === 'rejected' ? 'bg-red-100 text-red-800' : ''
                     }`}>
                       <span>
-                        {event.status === 'pending' && (event.moderator_id ? 'Взято на рассмотрение модератором' : 'На модерации')}
-                        {event.status === 'revision' && `На доработке: ${event.revision_comment || 'Без комментария'}`}
+                        {event.status === 'pending' && (event.moderator_id ? 'Взято на рассмотрение модератором' : 'На модерации')}{event.status === 'revision' && `На доработке: ${event.revision_comment || 'Без комментария'}`}
                         {event.status === 'rejected' && `Отклонено: ${event.rejection_reason || 'Без причины'}`}
                       </span>
                       
@@ -240,7 +287,8 @@ export default function FeedPage() {
                           </span>
                         )}
                         <h2 className="text-lg md:text-xl font-bold leading-tight break-words">{event.title}</h2>
-                        <div className="flex flex-wrap items-center gap-2 mt-0.5"><Link href={`/u/profile?id=${event.author?.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary-color)' }}>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                          <Link href={`/u/profile?id=${event.author?.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary-color)' }}>
                             {event.author?.display_name || event.author?.username || 'Неизвестный'}
                           </Link>
                           {!isMyEvent && (
@@ -271,8 +319,7 @@ export default function FeedPage() {
                           key={index} 
                           src={url} 
                           alt="Фото мероприятия" 
-                          className="h-40 md:h-48 w-auto object-cover rounded-xl border"
-                          style={{ borderColor: 'var(--card-border)' }}
+                          className="h-40 md:h-48 w-auto object-cover rounded-xl border"style={{ borderColor: 'var(--card-border)' }}
                         />
                       ))}
                     </div>
@@ -305,6 +352,20 @@ export default function FeedPage() {
           )}
         </div>
       </div>
+
+      {/* Кнопка "Наверх" */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 md:bottom-8 md:right-8 p-3 md:p-4 rounded-full shadow-lg z-50 transition-all hover:scale-110 active:scale-95"
+          style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}
+          title="Наверх"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

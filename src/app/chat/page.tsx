@@ -22,6 +22,32 @@ type GlobalUser = {
   avatar_url: string
 }
 
+const ChatListSkeleton = () => (
+  <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
+    <div className="w-full max-w-3xl rounded-2xl border animate-pulse-slow" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+      <div className="p-6 border-b flex justify-between items-center" style={{ borderColor: 'var(--card-border)' }}>
+        <div>
+          <div className="h-6 w-32 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+          <div className="h-4 w-48 bg-gray-200 dark:bg-gray-700 rounded"></div>
+        </div>
+        <div className="h-8 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+      </div>
+      <div className="p-4 space-y-4">
+        <div className="h-10 w-full bg-gray-200 dark:bg-gray-700 rounded-lg mb-4"></div>
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-4 p-4 rounded-xl border" style={{ borderColor: 'var(--card-border)' }}>
+            <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            <div className="flex-1">
+              <div className="h-5 w-1/3 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+              <div className="h-4 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+)
+
 export default function ChatListPage() {
   const [dialogs, setDialogs] = useState<Dialog[]>([])
   const [globalUsers, setGlobalUsers] = useState<GlobalUser[]>([])
@@ -40,7 +66,6 @@ export default function ChatListPage() {
       }
       setUser(session.user)
 
-      // 1. Загружаем диалоги
       const { data: messagesData } = await supabase
         .from('messages')
         .select(`
@@ -69,7 +94,6 @@ export default function ChatListPage() {
         setDialogs(Array.from(uniqueDialogs.values()) as Dialog[])
       }
 
-      // 2. Загружаем контакты (кастомные имена)
       const { data: contactsData } = await supabase
         .from('contacts')
         .select('contact_id, custom_name')
@@ -77,13 +101,11 @@ export default function ChatListPage() {
       
       if (contactsData) {
         const contactsMap: Record<string, string> = {}
-        contactsData.forEach(c => {
-          if (c.custom_name) contactsMap[c.contact_id] = c.custom_name
+        contactsData.forEach(c => {if (c.custom_name) contactsMap[c.contact_id] = c.custom_name
         })
         setContacts(contactsMap)
       }
 
-      // 3. Загружаем всех пользователей для глобального поиска
       const { data: usersData } = await supabase
         .from('profiles')
         .select('id, username, display_name, avatar_url')
@@ -99,7 +121,6 @@ export default function ChatListPage() {
   const isSearching = searchQuery.length > 0
   const filteredDialogs = isSearching ? [] : dialogs
   
-  // Ищем по настоящему имени, нику и по личной заметке
   const filteredGlobalUsers = isSearching
     ? globalUsers.filter(u => {
         const query = searchQuery.toLowerCase()
@@ -111,10 +132,11 @@ export default function ChatListPage() {
       })
     : []
 
-  if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
+  if (loading) return <ChatListSkeleton />
 
   return (
-    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center"><div className="w-full max-w-3xl rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+    <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
+      <div className="w-full max-w-3xl rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
         
         <div className="p-6 border-b flex justify-between items-center" style={{ borderColor: 'var(--card-border)' }}>
           <div>
@@ -136,7 +158,6 @@ export default function ChatListPage() {
             style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
           />
 
-          {/* Блок Глобального поиска */}
           {isSearching && (
             <div className="mb-6">
               <h3 className="text-xs font-bold opacity-50 uppercase tracking-wider mb-2 px-2">Глобальный поиск</h3>
@@ -165,8 +186,7 @@ export default function ChatListPage() {
                         </div>
                       </div>
                       <button 
-                        onClick={() => router.push(`/chat/${gu.id}`)}
-                        className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
+                        onClick={() => router.push(`/chat/${gu.id}`)}className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
                         style={{ backgroundColor: 'var(--primary-color)' }}
                       >
                         Написать
@@ -178,7 +198,6 @@ export default function ChatListPage() {
             </div>
           )}
 
-          {/* Блок Существующих диалогов */}
           {!isSearching && (
             <div>
               <h3 className="text-xs font-bold opacity-50 uppercase tracking-wider mb-2 px-2">Мои чаты</h3>
@@ -191,7 +210,8 @@ export default function ChatListPage() {
                   const customName = contacts[dialog.otherUser.id]
                   return (
                     <div 
-                      key={dialog.id}onClick={() => router.push(`/chat/${dialog.otherUser.id}`)}
+                      key={dialog.id} 
+                      onClick={() => router.push(`/chat/${dialog.otherUser.id}`)}
                       className="flex items-center gap-4 p-4 rounded-xl border border-transparent hover:border-[var(--card-border)] hover:bg-black/5 cursor-pointer transition-all"
                     >
                       <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">

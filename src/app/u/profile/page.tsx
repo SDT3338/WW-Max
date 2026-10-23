@@ -5,6 +5,32 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
+const PublicProfileSkeleton = () => (
+  <div className="min-h-screen p-4 md:p-8 flex flex-col items-center">
+    <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl border text-center animate-pulse-slow mb-6" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+      <div className="w-24 h-24 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 mb-4"></div>
+      <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded mx-auto mb-2"></div>
+      <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded mx-auto mb-4"></div>
+      <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded mx-auto mb-6"></div>
+      <div className="flex justify-center gap-3">
+        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+      </div>
+    </div>
+    
+    <div className="w-full max-w-2xl space-y-4">
+      <div className="h-6 w-40 bg-gray-200 dark:bg-gray-700 rounded mb-2 px-2"></div>
+      {[1, 2].map(i => (
+        <div key={i} className="p-6 rounded-2xl border animate-pulse-slow" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+          <div className="h-6 w-3/4 bg-gray-200 dark:bg-gray-700 rounded mb-4"></div>
+          <div className="h-4 w-1/4 bg-gray-200 dark:bg-gray-700 rounded mb-4"></div>
+          <div className="h-20 w-full bg-gray-200 dark:bg-gray-700 rounded mb-4"></div>
+        </div>
+      ))}
+    </div>
+  </div>
+)
+
 function ProfileContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -50,7 +76,7 @@ function ProfileContent() {
       
       if (eventsData) setEvents(eventsData)
 
-      // Считаем подписчиков (кто подписан на этого пользователя)
+      // Считаем подписчиков
       const { count } = await supabase
         .from('subscriptions')
         .select('*', { count: 'exact', head: true })
@@ -58,7 +84,7 @@ function ProfileContent() {
       
       setSubscriberCount(count || 0)
 
-      // Проверяем, подписан ли текущий пользователь
+      // Проверяем подписку
       if (session.user.id !== profileId) {
         const { data: subData } = await supabase
           .from('subscriptions')
@@ -80,8 +106,7 @@ function ProfileContent() {
     if (isSubscribed) {
       await supabase
         .from('subscriptions')
-        .delete()
-        .match({ follower_id: currentUserId, following_id: profileId })
+        .delete().match({ follower_id: currentUserId, following_id: profileId })
       setIsSubscribed(false)
       setSubscriberCount(prev => prev - 1)
     } else {
@@ -93,7 +118,7 @@ function ProfileContent() {
     }
   }
 
-  if (loading) return <div className="p-8 text-center font-medium" style={{ color: 'var(--text-color)' }}>Загрузка...</div>
+  if (loading) return <PublicProfileSkeleton />
   if (!profile) return <div className="p-8 text-center text-red-500">Профиль не найден</div>
 
   const isMe = currentUserId === profileId
@@ -111,6 +136,7 @@ function ProfileContent() {
             </div>
           )}
         </div>
+
         <h1 className="text-2xl font-bold mb-1">{profile.display_name || profile.username}</h1>
         <p className="text-sm font-medium mb-2" style={{ color: 'var(--primary-color)' }}>@{profile.username}</p>
         
@@ -164,8 +190,7 @@ function ProfileContent() {
             У этого пользователя пока нет новостей.
           </div>
         ) : (
-          events.map((event) => (
-            <div key={event.id} className="p-6 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
+          events.map((event) => (<div key={event.id} className="p-6 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
               <h3 className="text-lg font-bold mb-2">{event.title}</h3>
               <p className="text-sm opacity-70 mb-4">{new Date(event.created_at).toLocaleDateString('ru-RU')}</p>
               
@@ -192,7 +217,7 @@ function ProfileContent() {
                 {event.event_date && (
                   <span>
                     Время: {new Date(event.event_date).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
-                    </span>
+                  </span>
                 )}
               </div>
             </div>
@@ -205,7 +230,7 @@ function ProfileContent() {
 
 export default function PublicProfilePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center font-medium">Загрузка...</div>}>
+    <Suspense fallback={<PublicProfileSkeleton />}>
       <ProfileContent />
     </Suspense>
   )

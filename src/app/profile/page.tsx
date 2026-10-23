@@ -6,6 +6,32 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { User } from '@supabase/supabase-js'
 
+const ProfileSkeleton = () => (
+  <div className="min-h-screen p-4 md:p-8 flex flex-col items-center gap-6">
+    <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl border animate-pulse-slow" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <div className="h-7 w-40 bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+          <div className="h-4 w-56 bg-gray-200 dark:bg-gray-700 rounded"></div>
+        </div>
+        <div className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+      </div>
+      
+      <div className="flex items-center gap-5 mb-6">
+        <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700"></div>
+        <div className="h-8 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+        <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+        <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+      </div>
+      <div className="h-24 bg-gray-200 dark:bg-gray-700 rounded-lg mb-5"></div>
+      <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+    </div>
+  </div>
+)
+
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -21,10 +47,6 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   
   const [subscriptions, setSubscriptions] = useState<any[]>([])
-
-  // Состояния для смены пароля
-  const [resetEmailSent, setResetEmailSent] = useState(false)
-  const [resetLoading, setResetLoading] = useState(false)
 
   const router = useRouter()
 
@@ -90,8 +112,7 @@ export default function ProfilePage() {
       .from('events')
       .upload(filePath, avatarFile)
 
-    if (uploadError) {
-      setMessage('Ошибка загрузки фото: ' + uploadError.message)
+    if (uploadError) {setMessage('Ошибка загрузки фото: ' + uploadError.message)
       setUploading(false)
       return
     }
@@ -141,6 +162,7 @@ export default function ProfilePage() {
     setAvatarFile(null)
     setSaving(false)
   }
+
   const handleUnsubscribe = async (followingId: string) => {
     if (!user) return
     
@@ -154,29 +176,12 @@ export default function ProfilePage() {
     }
   }
 
-  const handleResetPassword = async () => {
-    if (!user?.email) return
-    setResetLoading(true)
-    setResetEmailSent(false)
-
-    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: `${window.location.origin}/update-password`,
-    })
-
-    if (error) {
-      alert('Ошибка: ' + error.message)
-    } else {
-      setResetEmailSent(true)
-    }
-    setResetLoading(false)
-  }
-
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
   }
 
-  if (loading) return <div className="p-8 text-center font-medium text-[var(--text-color)]">Загрузка...</div>
+  if (loading) return <ProfileSkeleton />
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center gap-6">
@@ -226,8 +231,7 @@ export default function ProfilePage() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => setAvatarFile(e.target.files ? e.target.files[0] : null)}
-                className="block w-full text-sm file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium hover:file:opacity-80 transition-colors"
+                onChange={(e) => setAvatarFile(e.target.files ? e.target.files[0] : null)}className="block w-full text-sm file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium hover:file:opacity-80 transition-colors"
                 style={{ color: 'var(--text-color)' }}
               />
             </div>
@@ -293,33 +297,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Блок безопасности */}
-      <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
-        <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>Безопасность</h2>
-        
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border bg-black/5" style={{ borderColor: 'var(--card-border)' }}>
-          <div>
-            <p className="font-bold text-sm">Смена пароля</p>
-            <p className="text-xs opacity-70 mt-1">Мы отправим ссылку для сброса пароля на вашу почту.</p>
-          </div>
-          <button
-            onClick={handleResetPassword}
-            disabled={resetLoading}
-            className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors whitespace-nowrap"
-            style={{ backgroundColor: 'var(--primary-color)' }}
-          >
-            {resetLoading ? 'Отправка...' : 'Изменить пароль'}
-          </button>
-        </div>
-        
-        {resetEmailSent && (
-          <div className="mt-4 p-3 text-sm rounded-lg font-medium bg-green-50 text-green-800">
-            Письмо для сброса пароля отправлено на {user?.email}. Проверьте почту!
-          </div>
-        )}
-      </div>
-
-      {/* Блок подписок */}
       <div className="w-full max-w-2xl p-8 md:p-10 rounded-2xl shadow-sm border" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--card-border)', color: 'var(--text-color)' }}>
         <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--primary-text)' }}>Мои подписки</h2>
         
@@ -328,8 +305,7 @@ export default function ProfilePage() {
         ) : (
           <div className="space-y-3">
             {subscriptions.map((sub) => (
-              <div key={sub.following_id} className="flex items-center justify-between p-3 rounded-xl border bg-black/5" style={{ borderColor: 'var(--card-border)' }}>
-                <Link href={`/u/profile?id=${sub.profiles.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+              <div key={sub.following_id} className="flex items-center justify-between p-3 rounded-xl border bg-black/5" style={{ borderColor: 'var(--card-border)' }}><Link href={`/u/profile?id=${sub.profiles.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                   <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
                     {sub.profiles.avatar_url ? (
                       <img src={sub.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
